@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import json
 import logging
 import time
 from typing import List, Union, Type, Optional
@@ -18,28 +17,22 @@ class DataListener(object):
     def on_data_loaded(self, data: pd.DataFrame) -> object:
         """
 
-        Parameters
-        ----------
-        data : the data loaded at first time
+        :param data:
         """
         raise NotImplementedError
 
     def on_data_changed(self, data: pd.DataFrame) -> object:
         """
 
-        Parameters
-        ----------
-        data : the data added
+        :param data:
         """
         raise NotImplementedError
 
     def on_entity_data_changed(self, entity: str, added_data: pd.DataFrame) -> object:
         """
 
-        Parameters
-        ----------
-        entity : the entity
-        added_data : the data added for the entity
+        :param entity: the entity
+        :param added_data: the data added for the entity
         """
         pass
 
@@ -50,7 +43,7 @@ class DataReader(Drawable):
     def __init__(
         self,
         data_schema: Type[Mixin],
-        entity_schema: Type[TradableEntity],
+        entity_schema: Type[TradableEntity] = None,
         provider: str = None,
         entity_provider: str = None,
         entity_ids: List[str] = None,
@@ -65,32 +58,19 @@ class DataReader(Drawable):
         level: IntervalLevel = None,
         category_field: str = "entity_id",
         time_field: str = "timestamp",
-        computing_window: int = None,
+        keep_window: int = None,
     ) -> None:
         self.logger = logging.getLogger(self.__class__.__name__)
 
         self.data_schema = data_schema
         self.entity_schema = entity_schema
-
         self.provider = provider
         self.entity_provider = entity_provider
-
         self.start_timestamp = start_timestamp
         self.end_timestamp = end_timestamp
-
         self.start_timestamp = to_pd_timestamp(self.start_timestamp)
         self.end_timestamp = to_pd_timestamp(self.end_timestamp)
-
         self.exchanges = exchanges
-
-        if codes:
-            if type(codes) == str:
-                codes = codes.replace(" ", "")
-                if codes.startswith("[") and codes.endswith("]"):
-                    codes = json.loads(codes)
-                else:
-                    codes = codes.split(",")
-
         self.codes = codes
         self.entity_ids = entity_ids
 
@@ -113,23 +93,16 @@ class DataReader(Drawable):
 
         self.category_field = category_field
         self.time_field = time_field
-        self.computing_window = computing_window
+        self.computing_window = keep_window
 
         self.category_col = eval("self.data_schema.{}".format(self.category_field))
         self.time_col = eval("self.data_schema.{}".format(self.time_field))
 
         self.columns = columns
 
-        # we store the data in a multiple index(category_column,timestamp) Dataframe
         if self.columns:
-            # support str
-            if type(columns[0]) == str:
-                self.columns = []
-                for col in columns:
-                    self.columns.append(eval("data_schema.{}".format(col)))
-
             # always add category_column and time_field for normalizing
-            self.columns = list(set(self.columns) | {self.category_col, self.time_col})
+            self.columns = list(set(self.columns) | {self.category_field, self.time_field})
 
         self.data_listeners: List[DataListener] = []
 
@@ -160,7 +133,7 @@ class DataReader(Drawable):
         self.logger.info("load_data start")
         start_time = time.time()
         params = dict(
-            entity_ids=self.entity_ids,
+            entity_size=len(self.entity_ids) if self.entity_ids != None else None,
             provider=self.provider,
             columns=self.columns,
             start_timestamp=self.start_timestamp,
@@ -208,13 +181,13 @@ class DataReader(Drawable):
         :return:
         :rtype:
         """
+
         if not pd_is_not_null(self.data_df):
             self.load_data()
             return
 
         start_time = time.time()
 
-        # FIXME:we suppose history data should be there at first
         has_got = []
         dfs = []
         changed = False
@@ -225,7 +198,7 @@ class DataReader(Drawable):
 
                 recorded_timestamp = df.index.levels[1].max()
 
-                # move_on读取数据，表明之前的数据已经处理完毕，只需要保留computing_window的数据
+                #: move_on读取数据，表明之前的数据已经处理完毕，只需要保留computing_window的数据
                 if self.computing_window:
                     df = df.iloc[-self.computing_window :]
 
@@ -249,15 +222,16 @@ class DataReader(Drawable):
 
                     for listener in self.data_listeners:
                         listener.on_entity_data_changed(entity=entity_id, added_data=added_df)
-                    # if got data,just move to another entity_id
+                    #: if got data,just move to another entity_id
                     changed = True
                     has_got.append(entity_id)
-                    df = df.append(added_df, sort=False)
+                    # df = df.append(added_df, sort=False)
+                    df = pd.concat([df, added_df], sort=False)
                     dfs.append(df)
                 else:
                     cost_time = time.time() - start_time
                     if cost_time > timeout:
-                        # if timeout,just add the old data
+                        #: if timeout,just add the old data
                         has_got.append(entity_id)
                         dfs.append(df)
                         self.logger.warning(
@@ -282,7 +256,7 @@ class DataReader(Drawable):
         if listener not in self.data_listeners:
             self.data_listeners.append(listener)
 
-        # notify it once after registered
+        #: notify it once after registered
         if pd_is_not_null(self.data_df):
             listener.on_data_loaded(self.data_df)
 
@@ -301,13 +275,15 @@ if __name__ == "__main__":
     from zvt.domain import Stock1dKdata, Stock
 
     data_reader = DataReader(
-        codes=["002572", "000338"],
         data_schema=Stock1dKdata,
         entity_schema=Stock,
+        codes=["002572", "000338"],
         start_timestamp="2017-01-01",
         end_timestamp="2019-06-10",
     )
 
     data_reader.draw(show=True)
+
+
 # the __all__ is generated
 __all__ = ["DataListener", "DataReader"]

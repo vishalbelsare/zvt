@@ -10,7 +10,7 @@ from zvt.contract.recorder import TimestampsDataRecorder
 from zvt.domain import Stock, ActorMeta
 from zvt.domain.actor.stock_actor import StockTopTenFreeHolder, StockInstitutionalInvestorHolder
 from zvt.recorders.em.em_api import get_holder_report_dates, get_free_holders
-from zvt.utils import to_pd_timestamp, to_time_str
+from zvt.utils.time_utils import to_pd_timestamp, to_time_str
 
 
 class EMStockTopTenFreeRecorder(TimestampsDataRecorder):
@@ -120,5 +120,7 @@ class EMStockTopTenFreeRecorder(TimestampsDataRecorder):
 
 if __name__ == "__main__":
     EMStockTopTenFreeRecorder(codes=["000338"]).run()
+
+
 # the __all__ is generated
 __all__ = ["EMStockTopTenFreeRecorder"]

@@ -10,7 +10,7 @@ from zvt.contract.recorder import TimestampsDataRecorder
 from zvt.domain import Stock, ActorMeta
 from zvt.domain.actor.stock_actor import StockTopTenHolder, StockInstitutionalInvestorHolder
 from zvt.recorders.em.em_api import get_holder_report_dates, get_holders
-from zvt.utils import to_pd_timestamp, to_time_str
+from zvt.utils.time_utils import to_pd_timestamp, to_time_str
 
 
 class EMStockTopTenRecorder(TimestampsDataRecorder):
@@ -26,7 +26,6 @@ class EMStockTopTenRecorder(TimestampsDataRecorder):
             return [to_pd_timestamp(item["END_DATE"]) for item in result]
 
     def on_finish_entity(self, entity):
-        super().on_finish_entity(entity)
         super().on_finish_entity(entity)
         holders = StockTopTenHolder.query_data(
             entity_id=entity.id,
@@ -111,5 +110,7 @@ class EMStockTopTenRecorder(TimestampsDataRecorder):
 
 if __name__ == "__main__":
     EMStockTopTenRecorder(codes=["000002"]).run()
+
+
 # the __all__ is generated
 __all__ = ["EMStockTopTenRecorder"]

@@ -5,13 +5,27 @@ from zvt.contract import IntervalLevel
 
 
 def gen_kdata_schemas():
+    """
+    generate kdata(OHLC) schemas for tradable entity
+
+    """
     # A股行情
     gen_kdata_schema(
         pkg="zvt",
-        providers=["joinquant", "em"],
+        providers=["em", "qmt", "joinquant"],
         entity_type="stock",
-        levels=[level for level in IntervalLevel if level != IntervalLevel.LEVEL_TICK],
+        levels=[
+            level for level in IntervalLevel if level not in (IntervalLevel.LEVEL_L2_QUOTE, IntervalLevel.LEVEL_TICK)
+        ],
         adjust_types=[None, AdjustType.hfq],
+        entity_in_submodule=True,
+    )
+    # 中国期货
+    gen_kdata_schema(
+        pkg="zvt",
+        providers=["em"],
+        entity_type="future",
+        levels=[IntervalLevel.LEVEL_1DAY],
         entity_in_submodule=True,
     )
 
@@ -22,6 +36,14 @@ def gen_kdata_schemas():
         entity_type="stockus",
         levels=[IntervalLevel.LEVEL_1DAY],
         adjust_types=[None, AdjustType.hfq],
+        entity_in_submodule=True,
+    )
+    # 美指
+    gen_kdata_schema(
+        pkg="zvt",
+        providers=["em"],
+        entity_type="indexus",
+        levels=[IntervalLevel.LEVEL_1DAY],
         entity_in_submodule=True,
     )
 
@@ -44,7 +66,7 @@ def gen_kdata_schemas():
         entity_in_submodule=True,
     )
 
-    # 指数行情
+    # A股指数行情
     gen_kdata_schema(
         pkg="zvt",
         providers=["em", "sina"],
@@ -58,17 +80,28 @@ def gen_kdata_schemas():
         pkg="zvt", providers=["sina"], entity_type="etf", levels=[IntervalLevel.LEVEL_1DAY], entity_in_submodule=True
     )
 
+    # currency行情
+    gen_kdata_schema(
+        pkg="zvt", providers=["em"], entity_type="currency", levels=[IntervalLevel.LEVEL_1DAY], entity_in_submodule=True
+    )
+
 
 if __name__ == "__main__":
-    # zip_dir(ZVT_TEST_DATA_PATH, zip_file_name=DATA_SAMPLE_ZIP_PATH)
-    # gen_exports('contract',export_modules=['schema'])
+    # gen_exports("api")
+    # gen_exports("broker")
+    # gen_exports("common")
+    # gen_exports("contract", export_from_package=True, export_modules=["schema"])
+    # gen_exports("domain", export_from_package=True)
+    gen_exports("factors", export_from_package=True)
+    # gen_exports("trading")
+
     # gen_exports("ml")
-    gen_exports("utils")
-    # gen_exports('recorders')
-    # gen_exports('domain')
+    # gen_exports("utils", export_from_package=False, export_var=True)
     # gen_exports('informer')
-    # gen_exports('api')
     # gen_exports('trader')
     # gen_exports('autocode')
-    # gen_exports('ml')
+    # gen_exports("zhdate")
+    # gen_exports("recorders", export_from_package=True, exclude_modules=["qmt"])
+    # gen_exports("tag", export_from_package=False)
     # gen_kdata_schemas()
+    # zip_dir(ZVT_TEST_DATA_PATH, zip_file_name=DATA_SAMPLE_ZIP_PATH)

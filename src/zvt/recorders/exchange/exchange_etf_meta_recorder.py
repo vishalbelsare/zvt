@@ -71,12 +71,6 @@ class ChinaETFListSpider(Recorder):
         df_to_db(df=df, data_schema=Etf, provider=self.provider, force_update=False)
 
     def download_sh_etf_component(self, df: pd.DataFrame):
-        """
-        ETF_CLASS => 1. 单市场 ETF 2.跨市场 ETF 3. 跨境 ETF
-                        5. 债券 ETF 6. 黄金 ETF
-        :param df: ETF 列表数据
-        :return: None
-        """
         query_url = (
             "http://query.sse.com.cn/infodisplay/queryConstituentStockInfo.do?" "isPagination=false&type={}&etfClass={}"
         )
@@ -214,5 +208,7 @@ __all__ = ["ChinaETFListSpider"]
 if __name__ == "__main__":
     spider = ChinaETFListSpider(provider="exchange")
     spider.run()
+
+
 # the __all__ is generated
 __all__ = ["ChinaETFListSpider"]

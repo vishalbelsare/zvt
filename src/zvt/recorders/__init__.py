@@ -54,7 +54,7 @@ def init_main_index(provider="exchange"):
     from zvt.utils.time_utils import to_pd_timestamp
     import pandas as pd
     from zvt.contract.api import df_to_db
-    from zvt.domain import Index
+    from zvt.domain.meta import Index
 
     for item in CHINA_STOCK_MAIN_INDEX:
         item["timestamp"] = to_pd_timestamp(item["timestamp"])
@@ -65,6 +65,7 @@ def init_main_index(provider="exchange"):
 
 init_main_index(provider="exchange")
 
+
 # the __all__ is generated
 __all__ = ["init_main_index"]
 
@@ -72,23 +73,17 @@ __all__ = ["init_main_index"]
 # common code of the package
 # export interface in __all__ which contains __all__ of its sub modules
 
-# import all from submodule joinquant
-from .joinquant import *
-from .joinquant import __all__ as _joinquant_all
+# import all from submodule sina
+from .sina import *
+from .sina import __all__ as _sina_all
 
-__all__ += _joinquant_all
+__all__ += _sina_all
 
-# import all from submodule exchange
-from .exchange import *
-from .exchange import __all__ as _exchange_all
+# import all from submodule jqka
+from .jqka import *
+from .jqka import __all__ as _jqka_all
 
-__all__ += _exchange_all
-
-# import all from submodule em
-from .em import *
-from .em import __all__ as _em_all
-
-__all__ += _em_all
+__all__ += _jqka_all
 
 # import all from submodule consts
 from .consts import *
@@ -102,8 +97,26 @@ from .eastmoney import __all__ as _eastmoney_all
 
 __all__ += _eastmoney_all
 
-# import all from submodule sina
-from .sina import *
-from .sina import __all__ as _sina_all
+# import all from submodule joinquant
+from .joinquant import *
+from .joinquant import __all__ as _joinquant_all
 
-__all__ += _sina_all
+__all__ += _joinquant_all
+
+# import all from submodule exchange
+from .exchange import *
+from .exchange import __all__ as _exchange_all
+
+__all__ += _exchange_all
+
+# import all from submodule wb
+from .wb import *
+from .wb import __all__ as _wb_all
+
+__all__ += _wb_all
+
+# import all from submodule em
+from .em import *
+from .em import __all__ as _em_all
+
+__all__ += _em_all

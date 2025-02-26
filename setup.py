@@ -7,32 +7,15 @@ from os import path
 # Always prefer setuptools over distutils
 from setuptools import setup, find_packages
 
-try:
-    # for pip >= 10
-    from pip._internal.req import parse_requirements
-except ImportError:
-    # for pip <= 9.0.3
-    from pip.req import parse_requirements
-
 here = path.abspath(path.dirname(__file__))
 
 # Get the long description from the README file
 with open(path.join(here, "README.md"), encoding="utf-8") as f:
     long_description = f.read()
 
-# Arguments marked as "Required" below must be included for upload to PyPI.
-# Fields marked as "Optional" may be commented out.
-
-install_reqs = parse_requirements("requirements.txt", session=False)
-
-try:
-    requirements = [str(ir.req) for ir in install_reqs]
-except:
-    requirements = [str(ir.requirement) for ir in install_reqs]
-
 setup(
     name="zvt",
-    version="0.9.13",
+    version="0.13.1",
     description="unified,modular quant framework for human beings ",
     long_description=long_description,
     url="https://github.com/zvtvz/zvt",
@@ -47,16 +30,36 @@ setup(
         "Topic :: Software Development :: Build Tools",
         "Topic :: Office/Business :: Financial :: Investment",
         "License :: OSI Approved :: MIT License",
-        "Programming Language :: Python :: 3.6",
-        "Programming Language :: Python :: 3.7",
-        "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
     ],
     keywords="quant stock finance fintech big-data zvt technical-analysis trading-platform pandas fundamental-analysis",
-    packages=find_packages(include=["zvt.*", "zvt"]),
-    python_requires=">=3.5, <4",
+    package_dir={"": "src"},
+    packages=find_packages(where="src"),
+    python_requires=">=3.9, <4",
     include_package_data=True,
-    install_requires=requirements,
+    install_requires=[
+        "requests==2.31.0",
+        "SQLAlchemy==2.0.36",
+        "pandas==2.0.3",
+        "pydantic==2.6.4",
+        "arrow==1.2.3",
+        "openpyxl==3.1.1",
+        "demjson3==3.0.6",
+        "plotly==5.13.0",
+        "dash==2.18.2",
+        "jqdatapy==0.1.8",
+        "dash-bootstrap-components==1.3.1",
+        "dash_daq==0.5.0",
+        "scikit-learn==1.5.2",
+        "fastapi==0.110.0",
+        "fastapi-pagination==0.12.23",
+        "apscheduler==3.10.4",
+        "eastmoneypy==0.1.7",
+        "orjson==3.10.3",
+    ],
     project_urls={  # Optional
         "Bug Reports": "https://github.com/zvtvz/zvt/issues",
         "Funding": "https://www.foolcage.com/zvt",
@@ -67,6 +70,7 @@ setup(
     entry_points={
         "console_scripts": [
             "zvt = zvt.main:main",
+            "zvt_server = zvt.zvt_server:main",
             "zvt_plugin = zvt.plugin:main",
             "zvt_export = zvt.plugin:export",
         ],

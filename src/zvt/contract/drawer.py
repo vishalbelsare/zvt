@@ -11,23 +11,30 @@ from plotly.subplots import make_subplots
 from zvt.contract.api import decode_entity_id
 from zvt.contract.data_type import Bean
 from zvt.contract.normal_data import NormalData
-from zvt.utils import to_string
+from zvt.utils.decorator import to_string
 from zvt.utils.pd_utils import pd_is_not_null
 
 logger = logging.getLogger(__name__)
 
 
 class ChartType(Enum):
+    """
+    Chart type enum
+    """
+
+    #: candlestick chart
     kline = "kline"
-    # scatter mode
+    #: line chart
     line = "line"
+    #: area chart
     area = "area"
+    #: scatter chart
     scatter = "scatter"
-    # distribute
+    #: histogram chart
     histogram = "histogram"
-    # composite
+    #: pie chart
     pie = "pie"
-    # compare
+    #: bar chart
     bar = "bar"
 
 
@@ -36,17 +43,25 @@ _zvt_chart_type_map_scatter_mode = {ChartType.line: "lines", ChartType.area: "no
 
 @to_string
 class Rect(Bean):
+    """
+    rect struct with left-bottom(x0, y0), right-top(x1, y1)
+    """
+
     def __init__(self, x0=None, y0=None, x1=None, y1=None) -> None:
-        # left-bottom
+        #: left-bottom x0
         self.x0 = x0
+        #: left-bottom y0
         self.y0 = y0
-        # right-top
+        #: right-top x1
         self.x1 = x1
+        #: right-top y1
         self.y1 = y1
 
 
 class Draw(object):
-    def draw_kline(self, width=None, height=None, title=None, keep_ui_state=True, show=False, **kwargs):
+    def draw_kline(
+        self, width=None, height=None, title=None, keep_ui_state=True, show=False, scale_value=None, **kwargs
+    ):
         return self.draw(
             main_chart=ChartType.kline,
             width=width,
@@ -54,10 +69,13 @@ class Draw(object):
             title=title,
             keep_ui_state=keep_ui_state,
             show=show,
+            scale_value=scale_value,
             **kwargs,
         )
 
-    def draw_line(self, width=None, height=None, title=None, keep_ui_state=True, show=False, **kwargs):
+    def draw_line(
+        self, width=None, height=None, title=None, keep_ui_state=True, show=False, scale_value=None, **kwargs
+    ):
         return self.draw(
             main_chart=ChartType.line,
             width=width,
@@ -65,10 +83,13 @@ class Draw(object):
             title=title,
             keep_ui_state=keep_ui_state,
             show=show,
+            scale_value=scale_value,
             **kwargs,
         )
 
-    def draw_area(self, width=None, height=None, title=None, keep_ui_state=True, show=False, **kwargs):
+    def draw_area(
+        self, width=None, height=None, title=None, keep_ui_state=True, show=False, scale_value=None, **kwargs
+    ):
         return self.draw(
             main_chart=ChartType.area,
             width=width,
@@ -76,10 +97,13 @@ class Draw(object):
             title=title,
             keep_ui_state=keep_ui_state,
             show=show,
+            scale_value=scale_value,
             **kwargs,
         )
 
-    def draw_scatter(self, width=None, height=None, title=None, keep_ui_state=True, show=False, **kwargs):
+    def draw_scatter(
+        self, width=None, height=None, title=None, keep_ui_state=True, show=False, scale_value=None, **kwargs
+    ):
         return self.draw(
             main_chart=ChartType.scatter,
             width=width,
@@ -87,10 +111,13 @@ class Draw(object):
             title=title,
             keep_ui_state=keep_ui_state,
             show=show,
+            scale_value=scale_value,
             **kwargs,
         )
 
-    def draw_histogram(self, width=None, height=None, title=None, keep_ui_state=True, show=False, **kwargs):
+    def draw_histogram(
+        self, width=None, height=None, title=None, keep_ui_state=True, show=False, scale_value=None, **kwargs
+    ):
         return self.draw(
             ChartType.histogram,
             width=width,
@@ -98,17 +125,32 @@ class Draw(object):
             title=title,
             keep_ui_state=keep_ui_state,
             show=show,
+            scale_value=scale_value,
             **kwargs,
         )
 
-    def draw_bar(self, width=None, height=None, title=None, keep_ui_state=True, show=False, **kwargs):
+    def draw_bar(self, width=None, height=None, title=None, keep_ui_state=True, show=False, scale_value=None, **kwargs):
         return self.draw(
-            ChartType.bar, width=width, height=height, title=title, keep_ui_state=keep_ui_state, show=show, **kwargs
+            ChartType.bar,
+            width=width,
+            height=height,
+            title=title,
+            keep_ui_state=keep_ui_state,
+            show=show,
+            scale_value=scale_value,
+            **kwargs,
         )
 
-    def draw_pie(self, width=None, height=None, title=None, keep_ui_state=True, show=False, **kwargs):
+    def draw_pie(self, width=None, height=None, title=None, keep_ui_state=True, show=False, scale_value=None, **kwargs):
         return self.draw(
-            ChartType.pie, width=width, height=height, title=title, keep_ui_state=keep_ui_state, show=show, **kwargs
+            ChartType.pie,
+            width=width,
+            height=height,
+            title=title,
+            keep_ui_state=keep_ui_state,
+            show=show,
+            scale_value=scale_value,
+            **kwargs,
         )
 
     def draw(
@@ -120,6 +162,7 @@ class Draw(object):
         title=None,
         keep_ui_state=True,
         show=False,
+        scale_value=None,
         **kwargs,
     ):
 
@@ -201,7 +244,15 @@ class Drawable(object):
         return drawer
 
     def draw(
-        self, main_chart=ChartType.kline, width=None, height=None, title=None, keep_ui_state=True, show=False, **kwargs
+        self,
+        main_chart=ChartType.kline,
+        width=None,
+        height=None,
+        title=None,
+        keep_ui_state=True,
+        show=False,
+        scale_value=None,
+        **kwargs,
     ):
         return self.drawer().draw(
             main_chart=main_chart,
@@ -210,6 +261,7 @@ class Drawable(object):
             title=title,
             keep_ui_state=keep_ui_state,
             show=show,
+            scale_value=scale_value,
             **kwargs,
         )
 
@@ -283,6 +335,7 @@ class StackedDrawer(Draw):
         title=None,
         keep_ui_state=True,
         show=False,
+        scale_value=None,
         **kwargs,
     ):
         stacked_fig = go.Figure()
@@ -296,7 +349,9 @@ class StackedDrawer(Draw):
                 start = 2
                 break
         for index, drawer in enumerate(self.drawers, start=start):
-            traces, sub_traces = drawer.make_traces(main_chart=main_chart, sub_chart=sub_chart, **kwargs)
+            traces, sub_traces = drawer.make_traces(
+                main_chart=main_chart, sub_chart=sub_chart, scale_value=scale_value, **kwargs
+            )
 
             # fix sub traces as the bottom
             if sub_traces:
@@ -361,6 +416,7 @@ class Drawer(Draw):
         sub_col_chart: Optional[dict] = None,
         rects: List[Rect] = None,
         annotation_df: pd.DataFrame = None,
+        scale_value: int = None,
     ) -> None:
         """
 
@@ -373,37 +429,39 @@ class Drawer(Draw):
         :param annotation_df:
         """
 
-        # 主图数据
+        #: 主图数据
         if main_data is None:
             main_data = NormalData(main_df)
         self.main_data: NormalData = main_data
 
-        # 主图因子
+        #: 主图因子
         if not factor_data_list and factor_df_list:
             factor_data_list = []
             for df in factor_df_list:
                 factor_data_list.append(NormalData(df))
-        # 每一个df可能有多个column, 代表多个指标，对于连续型的，可以放在一个df里面
-        # 对于离散型的，比如一些特定模式的连线，放在多个df里面较好，因为index不同
+        #: 每一个df可能有多个column, 代表多个指标，对于连续型的，可以放在一个df里面
+        #: 对于离散型的，比如一些特定模式的连线，放在多个df里面较好，因为index不同
         self.factor_data_list: List[NormalData] = factor_data_list
 
-        # 副图数据
+        #: 副图数据
         if not sub_data_list and sub_df_list:
             sub_data_list = []
             for df in sub_df_list:
                 sub_data_list.append(NormalData(df))
-        # 每一个df可能有多个column, 代表多个指标，对于连续型的，可以放在一个df里面
-        # 对于离散型的，比如一些特定模式的连线，放在多个df里面较好，因为index不同
+        #: 每一个df可能有多个column, 代表多个指标，对于连续型的，可以放在一个df里面
+        #: 对于离散型的，比如一些特定模式的连线，放在多个df里面较好，因为index不同
         self.sub_data_list: List[NormalData] = sub_data_list
 
-        # 幅图col对应的图形，line or bar
+        #: 幅图col对应的图形，line or bar
         self.sub_col_chart = sub_col_chart
 
-        # 主图的标记数据
+        #: 主图的标记数据
         self.annotation_df = annotation_df
 
-        # list of rect
+        #: list of rect
         self.rects = rects
+
+        self.scale_value = scale_value
 
     def add_factor_df(self, df: pd.DataFrame):
         self.add_factor_data(NormalData(df))
@@ -424,12 +482,24 @@ class Drawer(Draw):
     def has_sub_plot(self):
         return self.sub_data_list is not None and not self.sub_data_list[0].empty()
 
-    def make_traces(self, main_chart=ChartType.kline, sub_chart="bar", yaxis="y", **kwargs):
+    def make_traces(self, main_chart=ChartType.kline, sub_chart="bar", yaxis="y", scale_value=None, **kwargs):
         traces = []
         sub_traces = []
 
         for entity_id, df in self.main_data.entity_map_df.items():
             df = df.select_dtypes(np.number)
+            df = df.copy()
+            if scale_value:
+                for col in df.columns:
+                    first = None
+                    for i in range(0, len(df)):
+                        first = df[col][i]
+                        if first != 0:
+                            break
+                    if first == 0:
+                        continue
+                    scale = scale_value / first
+                    df[col] = df[col] * scale
             code = entity_id
             try:
                 _, _, code = decode_entity_id(entity_id)
@@ -561,10 +631,13 @@ class Drawer(Draw):
         title=None,
         keep_ui_state=True,
         show=False,
+        scale_value=None,
         **kwargs,
     ):
         yaxis = "y"
-        traces, sub_traces = self.make_traces(main_chart=main_chart, sub_chart=sub_chart, yaxis=yaxis, **kwargs)
+        traces, sub_traces = self.make_traces(
+            main_chart=main_chart, sub_chart=sub_chart, yaxis=yaxis, scale_value=scale_value, **kwargs
+        )
 
         if sub_traces:
             fig = make_subplots(rows=2, cols=1, row_heights=[0.8, 0.2], vertical_spacing=0.08, shared_xaxes=True)
@@ -622,14 +695,14 @@ class Drawer(Draw):
 
 def annotations(annotation_df: pd.DataFrame, yref="y"):
     """
-    annotation_df format:
-                                    value    flag    color
-    entity_id    timestamp
+    annotation_df format::
+
+                                        value    flag    color
+        entity_id    timestamp
 
     :param annotation_df:
     :param yref: specific yaxis e.g, y,y2,y3
     :return:
-
     """
 
     if pd_is_not_null(annotation_df):
@@ -668,18 +741,5 @@ def annotations(annotation_df: pd.DataFrame, yref="y"):
     return None
 
 
-if __name__ == "__main__":
-    from zvt.factors.z import ZFactor
-
-    data_reader1 = ZFactor(codes=["000338"], level="1d")
-    data_reader2 = ZFactor(codes=["000338"], level="1wk")
-    print(data_reader2.data_df)
-
-    stacked = StackedDrawer(data_reader1.drawer(), data_reader2.drawer()).draw_kline(show=True)
-    # df = Stock1dHfqKdata.query_data(code='000338', start_timestamp='2015-01-01')
-    # sub_df = FinanceFactor.query_data(code='000338', start_timestamp='2015-01-01',
-    #                                   columns=[FinanceFactor.roe, FinanceFactor.entity_id, FinanceFactor.timestamp])
-    #
-    # Drawer(main_df=df, sub_df_list=[sub_df]).draw_kline(show=True)
 # the __all__ is generated
 __all__ = ["ChartType", "Rect", "Draw", "Drawable", "StackedDrawer", "Drawer", "annotations"]

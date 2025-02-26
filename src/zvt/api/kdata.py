@@ -7,8 +7,35 @@ import pandas as pd
 
 from zvt.contract import IntervalLevel, AdjustType, Mixin
 from zvt.contract.api import decode_entity_id, get_schema_by_name
+from zvt.domain import Index1dKdata
 from zvt.utils.pd_utils import pd_is_not_null
-from zvt.utils.time_utils import to_time_str, TIME_FORMAT_DAY, TIME_FORMAT_ISO8601
+from zvt.utils.time_utils import (
+    to_time_str,
+    TIME_FORMAT_DAY,
+    TIME_FORMAT_ISO8601,
+    to_pd_timestamp,
+    date_time_by_interval,
+    current_date,
+)
+
+
+def get_trade_dates(start, end=None):
+    df = Index1dKdata.query_data(
+        entity_id="index_sh_000001",
+        provider="em",
+        columns=["timestamp"],
+        start_timestamp=start,
+        end_timestamp=end,
+        order=Index1dKdata.timestamp.asc(),
+        return_type="df",
+    )
+    return df["timestamp"].tolist()
+
+
+def get_recent_trade_dates(days_count=5):
+    max_start = date_time_by_interval(current_date(), -days_count - 15)
+    dates = get_trade_dates(start=max_start)
+    return dates[-days_count:]
 
 
 def get_latest_kdata_date(
@@ -16,13 +43,13 @@ def get_latest_kdata_date(
     provider: str = None,
     level: Union[IntervalLevel, str] = IntervalLevel.LEVEL_1DAY,
     adjust_type: Union[AdjustType, str] = None,
-):
+) -> pd.Timestamp:
     data_schema: Mixin = get_kdata_schema(entity_type, level=level, adjust_type=adjust_type)
 
     latest_data = data_schema.query_data(
         provider=provider, order=data_schema.timestamp.desc(), limit=1, return_type="domain"
     )
-    return latest_data[0].timestamp
+    return to_pd_timestamp(latest_data[0].timestamp)
 
 
 def get_kdata_schema(
@@ -140,7 +167,7 @@ def to_high_level_kdata(kdata_df: pd.DataFrame, to_level: IntervalLevel):
     if to_level == IntervalLevel.LEVEL_1WEEK:
         # loffset='-2'　用周五作为时间标签
         if entity_type == "stock":
-            df = kdata_df.resample("W", loffset=pd.DateOffset(days=-2)).apply(
+            df = kdata_df.resample("W", offset=pd.Timedelta(days=-2)).apply(
                 {
                     "close": to_close,
                     "open": to_open,
@@ -151,7 +178,7 @@ def to_high_level_kdata(kdata_df: pd.DataFrame, to_level: IntervalLevel):
                 }
             )
         else:
-            df = kdata_df.resample("W", loffset=pd.DateOffset(days=-2)).apply(
+            df = kdata_df.resample("W", offset=pd.Timedelta(days=-2)).apply(
                 {
                     "close": to_close,
                     "open": to_open,
@@ -171,5 +198,18 @@ def to_high_level_kdata(kdata_df: pd.DataFrame, to_level: IntervalLevel):
     return df
 
 
+if __name__ == "__main__":
+    print(get_recent_trade_dates())
+
+
 # the __all__ is generated
-__all__ = ["get_kdata_schema", "get_kdata", "generate_kdata_id", "to_high_level_kdata"]
+__all__ = [
+    "get_trade_dates",
+    "get_recent_trade_dates",
+    "get_latest_kdata_date",
+    "get_kdata_schema",
+    "get_kdata",
+    "default_adjust_type",
+    "generate_kdata_id",
+    "to_high_level_kdata",
+]

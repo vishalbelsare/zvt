@@ -7,15 +7,15 @@ from sklearn.linear_model import LinearRegression, SGDRegressor
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from zvt.ml.lables import RelativePerformance, BehaviorCategory
 from zvt.api.kdata import default_adjust_type, get_kdata
 from zvt.contract import IntervalLevel, AdjustType
 from zvt.contract import TradableEntity
 from zvt.contract.drawer import Drawer
 from zvt.domain import Stock
-from zvt.factors import MaTransformer
-from zvt.utils import to_pd_timestamp
+from zvt.factors.transformers import MaTransformer
+from zvt.ml.lables import RelativePerformance, BehaviorCategory
 from zvt.utils.pd_utils import group_by_entity_id, normalize_group_compute_result, pd_is_not_null
+from zvt.utils.time_utils import to_pd_timestamp
 
 logger = logging.getLogger(__name__)
 
@@ -191,8 +191,7 @@ class MLMachine(object):
         self, entity_ids: List[str], start_timestamp: pd.Timestamp, end_timestamp: pd.Timestamp
     ) -> pd.DataFrame:
         """
-        result df format:
-
+        result df format
                                   col1    col2    col3    ...
         entity_id    timestamp
                                   1.2     0.5     0.3     ...
@@ -214,6 +213,13 @@ class MaStockMLMachine(StockMLMachine):
     def build_feature(
         self, entity_ids: List[str], start_timestamp: pd.Timestamp, end_timestamp: pd.Timestamp
     ) -> pd.DataFrame:
+        """
+
+        :param entity_ids:
+        :param start_timestamp:
+        :param end_timestamp:
+        :return:
+        """
         t = MaTransformer(windows=[5, 10, 120, 250])
         df = t.transform(self.kdata_df)
         return df

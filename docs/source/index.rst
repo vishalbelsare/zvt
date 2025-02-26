@@ -1,13 +1,21 @@
 Welcome to zvt
-===============================
+==============
 
 Contents
 --------
 
 .. toctree::
+    :maxdepth: 2
 
-    user_guide/index
-    api
+    install
+    intro
+    data/index
+    factor/index
+    trader/index
+    ml/index
+    drawer/index
+    contributor
+    api/index
 
 Indices and tables
 ==================

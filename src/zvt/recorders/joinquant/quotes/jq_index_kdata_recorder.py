@@ -30,6 +30,7 @@ class JqChinaIndexKdataRecorder(FixedCycleDataRecorder):
         force_update=True,
         sleeping_time=10,
         exchanges=None,
+        entity_id=None,
         entity_ids=None,
         code=None,
         codes=None,
@@ -43,6 +44,7 @@ class JqChinaIndexKdataRecorder(FixedCycleDataRecorder):
         level=IntervalLevel.LEVEL_1DAY,
         kdata_use_begin_time=False,
         one_day_trading_minutes=24 * 60,
+        return_unfinished=False,
     ) -> None:
         level = IntervalLevel(level)
         self.data_schema = get_kdata_schema(entity_type="index", level=level)
@@ -52,6 +54,7 @@ class JqChinaIndexKdataRecorder(FixedCycleDataRecorder):
             force_update,
             sleeping_time,
             exchanges,
+            entity_id,
             entity_ids,
             code,
             codes,
@@ -65,6 +68,7 @@ class JqChinaIndexKdataRecorder(FixedCycleDataRecorder):
             level,
             kdata_use_begin_time,
             one_day_trading_minutes,
+            return_unfinished,
         )
 
     def init_entities(self):
@@ -133,5 +137,7 @@ if __name__ == "__main__":
     JqChinaIndexKdataRecorder(level=level, sleeping_time=0, codes=codes, real_time=False).run()
 
     print(get_kdata(entity_id="index_sh_000001", limit=10))
+
+
 # the __all__ is generated
 __all__ = ["JqChinaIndexKdataRecorder"]

@@ -3,10 +3,10 @@ import logging
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from examples.recorder_utils import run_data_recorder
 from zvt import init_log
 from zvt.consts import IMPORTANT_INDEX
 from zvt.domain import Index, Index1dKdata, IndexStock
+from zvt.utils.recorder_utils import run_data_recorder
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +24,9 @@ def record_index():
 
 @sched.scheduled_job("cron", hour=16, minute=20)
 def record_index_kdata():
+    run_data_recorder(domain=Index, data_provider="em")
     run_data_recorder(
-        domain=Index1dKdata, data_provider="em", entity_provider="exchange", codes=IMPORTANT_INDEX, day_data=True
+        domain=Index1dKdata, data_provider="em", entity_provider="em", codes=IMPORTANT_INDEX, day_data=True
     )
 
 

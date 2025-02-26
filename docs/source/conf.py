@@ -10,19 +10,20 @@
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
-# import os
-# import sys
-# sys.path.insert(0, os.path.abspath('.'))
+import os
+import sys
+
+sys.path.insert(0, os.path.abspath("../../src"))
 
 
 # -- Project information -----------------------------------------------------
 
 project = "zvt"
-copyright = "2021, foolcage"
+copyright = "2022, foolcage"
 author = "foolcage"
 
 # The full version, including alpha/beta/rc tags
-release = "0.9.14"
+release = "0.13.0"
 
 
 # -- General configuration ---------------------------------------------------
@@ -33,6 +34,8 @@ release = "0.9.14"
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
+    "IPython.sphinxext.ipython_directive",
+    "IPython.sphinxext.ipython_console_highlighting",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -55,3 +58,13 @@ html_theme = "alabaster"
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ["_static"]
+
+html_sidebars = {
+    "**": ["sidebarlogo.html", "globaltoc.html", "sourcelink.html", "searchbox.html", "localtoc.html", "relations.html"]
+}
+
+autosummary_generate = True
+
+autodoc_default_options = {
+    "member-order": "bysource",
+}

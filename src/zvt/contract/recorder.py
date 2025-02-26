@@ -5,21 +5,21 @@ import uuid
 from typing import List
 
 import pandas as pd
+import requests
 from sqlalchemy.orm import Session
 
 from zvt.contract import IntervalLevel
 from zvt.contract.api import get_db_session, get_schema_columns
 from zvt.contract.api import get_entities, get_data
-from zvt.contract.base import OneStateService
+from zvt.contract.base_service import OneStateService
 from zvt.contract.schema import Mixin, TradableEntity
+from zvt.contract.utils import is_in_same_interval, evaluate_size_from_timestamp
 from zvt.contract.zvt_info import RecorderState
-from zvt.utils import pd_is_not_null
+from zvt.utils.pd_utils import pd_is_not_null
 from zvt.utils.time_utils import (
     to_pd_timestamp,
     TIME_FORMAT_DAY,
     to_time_str,
-    evaluate_size_from_timestamp,
-    is_in_same_interval,
     now_pd_timestamp,
     now_time_str,
 )
@@ -38,13 +38,13 @@ class Meta(type):
 
 
 class Recorder(OneStateService, metaclass=Meta):
-    # overwrite them to set up the data you want to record
+    #: overwrite them to set up the data you want to record
     provider: str = None
     data_schema: Mixin = None
 
-    # original page url
+    #: original page url
     original_page_url = None
-    # request url
+    #: request url
     url = None
 
     state_schema = RecorderState
@@ -64,8 +64,9 @@ class Recorder(OneStateService, metaclass=Meta):
         self.force_update = force_update
         self.sleeping_time = sleeping_time
 
-        # using to do db operations
+        #: using to do db operations
         self.session = get_db_session(provider=self.provider, data_schema=self.data_schema)
+        self.http_session = requests.Session()
 
     def run(self):
         raise NotImplementedError
@@ -82,7 +83,7 @@ class Recorder(OneStateService, metaclass=Meta):
 
 
 class EntityEventRecorder(Recorder):
-    # overwrite them to fetch the entity list
+    #: overwrite them to fetch the entity list
     entity_provider: str = None
     entity_schema: TradableEntity = None
 
@@ -91,18 +92,21 @@ class EntityEventRecorder(Recorder):
         force_update=False,
         sleeping_time=10,
         exchanges=None,
+        entity_id=None,
         entity_ids=None,
         code=None,
         codes=None,
         day_data=False,
         entity_filters=None,
         ignore_failed=True,
+        return_unfinished=False,
     ) -> None:
         """
         :param code:
         :param ignore_failed:
         :param entity_filters:
         :param exchanges:
+        :param entity_id: for record single entity
         :param entity_ids: set entity_ids or (entity_type,exchanges,codes)
         :param codes:
         :param day_data: one record per day,set to True if you want skip recording it when data of today exist
@@ -114,7 +118,7 @@ class EntityEventRecorder(Recorder):
         assert self.entity_provider is not None
         assert self.entity_schema is not None
 
-        # setup the entities you want to record
+        #: setup the entities you want to record
         self.exchanges = exchanges
         if codes is None and code is not None:
             self.codes = [code]
@@ -122,10 +126,15 @@ class EntityEventRecorder(Recorder):
             self.codes = codes
         self.day_data = day_data
 
-        # set entity_ids or (entity_type,exchanges,codes)
-        self.entity_ids = entity_ids
+        #: set entity_ids or (entity_type,exchanges,codes)
+        self.entity_ids = None
+        if entity_id:
+            self.entity_ids = [entity_id]
+        if entity_ids:
+            self.entity_ids = entity_ids
         self.entity_filters = entity_filters
         self.ignore_failed = ignore_failed
+        self.return_unfinished = return_unfinished
 
         self.entity_session: Session = None
         self.entities: List = None
@@ -153,7 +162,7 @@ class EntityEventRecorder(Recorder):
                 else:
                     self.entity_filters = [self.entity_schema.entity_id.notin_(entity_ids)]
 
-        # init the entity list
+        #: init the entity list
         self.entities = get_entities(
             session=self.entity_session,
             entity_schema=self.entity_schema,
@@ -174,6 +183,7 @@ class TimeSeriesDataRecorder(EntityEventRecorder):
         force_update=False,
         sleeping_time=5,
         exchanges=None,
+        entity_id=None,
         entity_ids=None,
         code=None,
         codes=None,
@@ -184,24 +194,27 @@ class TimeSeriesDataRecorder(EntityEventRecorder):
         fix_duplicate_way="add",
         start_timestamp=None,
         end_timestamp=None,
+        return_unfinished=False,
     ) -> None:
+        self.start_timestamp = to_pd_timestamp(start_timestamp)
+        self.end_timestamp = to_pd_timestamp(end_timestamp)
         super().__init__(
             force_update,
             sleeping_time,
             exchanges,
+            entity_id,
             entity_ids,
             code=code,
             codes=codes,
             day_data=day_data,
             entity_filters=entity_filters,
             ignore_failed=ignore_failed,
+            return_unfinished=return_unfinished,
         )
 
         self.real_time = real_time
         self.close_hour, self.close_minute = self.entity_schema.get_close_hour_and_minute()
         self.fix_duplicate_way = fix_duplicate_way
-        self.start_timestamp = to_pd_timestamp(start_timestamp)
-        self.end_timestamp = to_pd_timestamp(end_timestamp)
 
     def get_latest_saved_record(self, entity):
         order = eval("self.data_schema.{}.desc()".format(self.get_evaluated_time_field()))
@@ -220,7 +233,7 @@ class TimeSeriesDataRecorder(EntityEventRecorder):
         return None
 
     def evaluate_start_end_size_timestamps(self, entity):
-        # not to list date yet
+        #: not to list date yet
         if entity.timestamp and (entity.timestamp >= now_pd_timestamp()):
             self.logger.info("ignore entity: {} list date: {}", entity.id, entity.timestamp)
             return entity.timestamp, None, 0, None
@@ -305,15 +318,15 @@ class TimeSeriesDataRecorder(EntityEventRecorder):
 
         got_new_data = False
 
-        # if the domain is directly generated in record method, we just return it
+        #: if the domain is directly generated in record method, we just return it
         if isinstance(original_data, self.data_schema):
             got_new_data = True
             return got_new_data, original_data
 
         the_id = self.generate_domain_id(entity, original_data)
 
-        # optional way
-        # item = self.session.query(self.data_schema).get(the_id)
+        #: optional way
+        #: item = self.session.query(self.data_schema).get(the_id)
 
         items = get_data(
             data_schema=self.data_schema,
@@ -384,6 +397,8 @@ class TimeSeriesDataRecorder(EntityEventRecorder):
 
             if self.entity_session:
                 self.entity_session.close()
+            if self.http_session:
+                self.http_session.close()
         except Exception as e:
             self.logger.error(e)
 
@@ -418,7 +433,7 @@ class TimeSeriesDataRecorder(EntityEventRecorder):
                             )
                         )
 
-                    # no more to record
+                    #: no more to record
                     if size == 0:
                         finished_items.append(entity_item)
                         self.logger.info(
@@ -429,7 +444,7 @@ class TimeSeriesDataRecorder(EntityEventRecorder):
                         self.on_finish_entity(entity_item)
                         continue
 
-                    # sleep for a while to next entity
+                    #: sleep for a while to next entity
                     if index != 0:
                         self.sleep()
 
@@ -447,14 +462,14 @@ class TimeSeriesDataRecorder(EntityEventRecorder):
                             if got_new_data:
                                 all_duplicated = False
 
-                            # handle the case  generate_domain_id generate duplicate id
+                            #: handle the case  generate_domain_id generate duplicate id
                             if domain_item:
                                 duplicate = [item for item in domain_list if item.id == domain_item.id]
                                 if duplicate:
-                                    # regenerate the id
+                                    #: regenerate the id
                                     if self.fix_duplicate_way == "add":
                                         domain_item.id = "{}_{}".format(domain_item.id, uuid.uuid1())
-                                    # ignore
+                                    #: ignore
                                     else:
                                         self.logger.info(f"ignore original duplicate item:{domain_item.id}")
                                         continue
@@ -466,14 +481,14 @@ class TimeSeriesDataRecorder(EntityEventRecorder):
                         else:
                             self.logger.info("just got {} duplicated data in this cycle".format(len(original_list)))
 
-                    # could not get more data
+                    #: could not get more data
                     entity_finished = False
                     if not original_list or all_duplicated:
-                        # not realtime
+                        #: not realtime
                         if not self.real_time:
                             entity_finished = True
 
-                        # realtime and to the close time
+                        #: realtime and to the close time
                         if self.real_time and (self.close_hour is not None) and (self.close_minute is not None):
                             current_timestamp = pd.Timestamp.now()
                             if current_timestamp.hour >= self.close_hour:
@@ -484,7 +499,7 @@ class TimeSeriesDataRecorder(EntityEventRecorder):
 
                                     entity_finished = True
 
-                    # add finished entity to finished_items
+                    #: add finished entity to finished_items
                     if entity_finished:
                         finished_items.append(entity_item)
 
@@ -505,6 +520,11 @@ class TimeSeriesDataRecorder(EntityEventRecorder):
                         "recording data for entity_id:{},{},error:{}".format(entity_item.id, self.data_schema, e)
                     )
                     raising_exception = e
+                    if self.return_unfinished:
+                        self.on_finish()
+                        unfinished_items = set(unfinished_items) - set(finished_items)
+                        return [item.entity_id for item in unfinished_items]
+
                     finished_items = unfinished_items
                     break
 
@@ -514,6 +534,8 @@ class TimeSeriesDataRecorder(EntityEventRecorder):
                 break
 
         self.on_finish()
+        if self.return_unfinished:
+            return []
 
         if raising_exception:
             raise raising_exception
@@ -525,6 +547,7 @@ class FixedCycleDataRecorder(TimeSeriesDataRecorder):
         force_update=True,
         sleeping_time=10,
         exchanges=None,
+        entity_id=None,
         entity_ids=None,
         code=None,
         codes=None,
@@ -538,11 +561,13 @@ class FixedCycleDataRecorder(TimeSeriesDataRecorder):
         level=IntervalLevel.LEVEL_1DAY,
         kdata_use_begin_time=False,
         one_day_trading_minutes=24 * 60,
+        return_unfinished=False,
     ) -> None:
         super().__init__(
             force_update,
             sleeping_time,
             exchanges,
+            entity_id,
             entity_ids,
             code=code,
             codes=codes,
@@ -553,6 +578,7 @@ class FixedCycleDataRecorder(TimeSeriesDataRecorder):
             fix_duplicate_way=fix_duplicate_way,
             start_timestamp=start_timestamp,
             end_timestamp=end_timestamp,
+            return_unfinished=return_unfinished,
         )
 
         self.level = IntervalLevel(level)
@@ -562,8 +588,8 @@ class FixedCycleDataRecorder(TimeSeriesDataRecorder):
     def get_latest_saved_record(self, entity):
         order = eval("self.data_schema.{}.desc()".format(self.get_evaluated_time_field()))
 
-        # 对于k线这种数据，最后一个记录有可能是没完成的，所以取两个
-        # 同一周期内只保留最新的一个数据
+        #: 对于k线这种数据，最后一个记录有可能是没完成的，所以取两个
+        #: 同一周期内只保留最新的一个数据
         records = get_data(
             entity_id=entity.id,
             provider=self.provider,
@@ -575,7 +601,7 @@ class FixedCycleDataRecorder(TimeSeriesDataRecorder):
             level=self.level,
         )
         if records:
-            # delete unfinished kdata
+            #: delete unfinished kdata
             if len(records) == 2:
                 if is_in_same_interval(t1=records[0].timestamp, t2=records[1].timestamp, level=self.level):
                     self.session.delete(records[1])
@@ -584,18 +610,18 @@ class FixedCycleDataRecorder(TimeSeriesDataRecorder):
         return None
 
     def evaluate_start_end_size_timestamps(self, entity):
-        # not to list date yet
+        #: not to list date yet
         if entity.timestamp and (entity.timestamp >= now_pd_timestamp()):
             return entity.timestamp, None, 0, None
 
-        # get latest record
+        #: get latest record
         latest_saved_record = self.get_latest_saved_record(entity=entity)
 
         if latest_saved_record:
-            # the latest saved timestamp
+            #: the latest saved timestamp
             latest_saved_timestamp = latest_saved_record.timestamp
         else:
-            # the list date
+            #: the list date
             latest_saved_timestamp = entity.timestamp
 
         if not latest_saved_timestamp:
@@ -621,6 +647,7 @@ class TimestampsDataRecorder(TimeSeriesDataRecorder):
         force_update=False,
         sleeping_time=5,
         exchanges=None,
+        entity_id=None,
         entity_ids=None,
         code=None,
         codes=None,
@@ -636,6 +663,7 @@ class TimestampsDataRecorder(TimeSeriesDataRecorder):
             force_update,
             sleeping_time,
             exchanges,
+            entity_id,
             entity_ids,
             code=code,
             codes=codes,

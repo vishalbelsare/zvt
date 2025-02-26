@@ -29,6 +29,7 @@ class JqChinaStockKdataRecorder(FixedCycleDataRecorder):
         force_update=True,
         sleeping_time=10,
         exchanges=None,
+        entity_id=None,
         entity_ids=None,
         code=None,
         codes=None,
@@ -43,6 +44,7 @@ class JqChinaStockKdataRecorder(FixedCycleDataRecorder):
         kdata_use_begin_time=False,
         one_day_trading_minutes=24 * 60,
         adjust_type=AdjustType.qfq,
+        return_unfinished=False,
     ) -> None:
         level = IntervalLevel(level)
         adjust_type = AdjustType(adjust_type)
@@ -53,6 +55,7 @@ class JqChinaStockKdataRecorder(FixedCycleDataRecorder):
             force_update,
             sleeping_time,
             exchanges,
+            entity_id,
             entity_ids,
             code,
             codes,
@@ -66,6 +69,7 @@ class JqChinaStockKdataRecorder(FixedCycleDataRecorder):
             level,
             kdata_use_begin_time,
             one_day_trading_minutes,
+            return_unfinished,
         )
 
         self.adjust_type = adjust_type
@@ -177,6 +181,7 @@ class JqChinaStockKdataRecorder(FixedCycleDataRecorder):
 
 if __name__ == "__main__":
     Stock1wkHfqKdata.record_data(codes=["300999"])
+
 
 # the __all__ is generated
 __all__ = ["JqChinaStockKdataRecorder"]

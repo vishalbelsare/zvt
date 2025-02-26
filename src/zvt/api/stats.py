@@ -6,14 +6,21 @@ from typing import Union
 
 import pandas as pd
 
-from zvt.api.kdata import get_kdata_schema, default_adjust_type
+from zvt.api.kdata import get_kdata_schema, default_adjust_type, get_latest_kdata_date, get_trade_dates
+from zvt.api.selector import get_entity_ids_by_filter
 from zvt.api.utils import get_recent_report_date
 from zvt.contract import Mixin, AdjustType
 from zvt.contract.api import decode_entity_id, get_entity_schema, get_entity_ids
 from zvt.contract.drawer import Drawer
 from zvt.domain import FundStock, StockValuation, BlockStock, Block
-from zvt.utils import now_pd_timestamp, next_date, pd_is_not_null
-from zvt.utils.time_utils import month_start_end_ranges, to_time_str
+from zvt.utils.pd_utils import pd_is_not_null
+from zvt.utils.time_utils import (
+    month_start_end_ranges,
+    to_time_str,
+    is_same_date,
+    now_pd_timestamp,
+    date_time_by_interval,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +41,7 @@ def get_top_performance_by_month(
     start_timestamp="2015-01-01",
     end_timestamp=now_pd_timestamp(),
     list_days=None,
+    data_provider=None,
 ):
     ranges = month_start_end_ranges(start_date=start_timestamp, end_date=end_timestamp)
 
@@ -45,9 +53,111 @@ def get_top_performance_by_month(
             start_timestamp=start_timestamp,
             end_timestamp=end_timestamp,
             list_days=list_days,
+            data_provider=data_provider,
         )
 
-        yield (end_timestamp, top)
+        yield start_timestamp, end_timestamp, top
+
+
+def get_top_performance_entities_by_periods(
+    entity_provider,
+    data_provider,
+    target_date=None,
+    periods=None,
+    ignore_new_stock=True,
+    ignore_st=True,
+    entity_ids=None,
+    entity_type="stock",
+    adjust_type=None,
+    top_count=50,
+    turnover_threshold=100000000,
+    turnover_rate_threshold=0.02,
+    return_type=TopType.positive,
+):
+    if periods is None:
+        periods = [*range(1, 21)]
+    if not adjust_type:
+        adjust_type = default_adjust_type(entity_type=entity_type)
+    kdata_schema = get_kdata_schema(entity_type=entity_type, adjust_type=adjust_type)
+    entity_schema = get_entity_schema(entity_type=entity_type)
+
+    if not target_date:
+        target_date = get_latest_kdata_date(provider=data_provider, entity_type=entity_type, adjust_type=adjust_type)
+
+    filter_entity_ids = get_entity_ids_by_filter(
+        provider=entity_provider,
+        ignore_st=ignore_st,
+        ignore_new_stock=ignore_new_stock,
+        entity_schema=entity_schema,
+        target_date=target_date,
+        entity_ids=entity_ids,
+    )
+
+    if not filter_entity_ids:
+        return []
+
+    filter_turnover_df = kdata_schema.query_data(
+        filters=[
+            kdata_schema.turnover >= turnover_threshold,
+            kdata_schema.turnover_rate >= turnover_rate_threshold,
+        ],
+        provider=data_provider,
+        start_timestamp=date_time_by_interval(target_date, -7),
+        end_timestamp=target_date,
+        index="entity_id",
+        columns=["entity_id", "code"],
+    )
+    if filter_entity_ids:
+        filter_entity_ids = set(filter_entity_ids) & set(filter_turnover_df.index.tolist())
+    else:
+        filter_entity_ids = filter_turnover_df.index.tolist()
+
+    if not filter_entity_ids:
+        return []
+
+    logger.info(f"{entity_type} filter_entity_ids size: {len(filter_entity_ids)}")
+    filters = [kdata_schema.entity_id.in_(filter_entity_ids)]
+    selected = []
+    current_start = None
+    real_period = 1
+    for i, period in enumerate(periods):
+        real_period = max(real_period, period)
+        while True:
+            start = date_time_by_interval(target_date, -real_period)
+            trade_days = get_trade_dates(start=start, end=target_date)
+            if not trade_days:
+                logger.info(f"no trade days in: {start} to {target_date}")
+                real_period = real_period + 1
+                continue
+            if current_start and is_same_date(current_start, trade_days[0]):
+                logger.info("ignore same trade days")
+                real_period = real_period + 1
+                continue
+            break
+        current_start = trade_days[0]
+        current_end = trade_days[-1]
+
+        logger.info(f"trade days in: {current_start} to {current_end}, real_period: {real_period} ")
+        positive_df, negative_df = get_top_performance_entities(
+            entity_type=entity_type,
+            start_timestamp=current_start,
+            end_timestamp=current_end,
+            kdata_filters=filters,
+            pct=1,
+            show_name=True,
+            entity_provider=entity_provider,
+            data_provider=data_provider,
+            return_type=return_type,
+        )
+
+        if return_type == TopType.positive:
+            df = positive_df
+        else:
+            df = negative_df
+        if pd_is_not_null(df):
+            selected = selected + df.index[:top_count].tolist()
+            selected = list(dict.fromkeys(selected))
+    return selected, real_period
 
 
 def get_top_performance_entities(
@@ -57,7 +167,8 @@ def get_top_performance_entities(
     pct=0.1,
     return_type=None,
     adjust_type: Union[AdjustType, str] = None,
-    filters=None,
+    entity_filters=None,
+    kdata_filters=None,
     show_name=False,
     list_days=None,
     entity_provider=None,
@@ -67,22 +178,25 @@ def get_top_performance_entities(
         adjust_type = default_adjust_type(entity_type=entity_type)
     data_schema = get_kdata_schema(entity_type=entity_type, adjust_type=adjust_type)
 
+    if not entity_filters:
+        entity_filters = []
     if list_days:
         entity_schema = get_entity_schema(entity_type=entity_type)
-        list_date = next_date(start_timestamp, -list_days)
-        ignore_entities = get_entity_ids(
-            provider=entity_provider,
-            entity_type=entity_type,
-            filters=[entity_schema.list_date >= list_date],
-        )
-        if ignore_entities:
-            logger.info(f"ignore size: {len(ignore_entities)}")
-            logger.info(f"ignore entities: {ignore_entities}")
-            f = [data_schema.entity_id.notin_(ignore_entities)]
-            if filters:
-                filters = filters + f
-            else:
-                filters = f
+        list_date = date_time_by_interval(start_timestamp, -list_days)
+        entity_filters += [entity_schema.list_date <= list_date]
+
+    filter_entities = get_entity_ids(
+        provider=entity_provider,
+        entity_type=entity_type,
+        filters=entity_filters,
+    )
+    if not filter_entities:
+        logger.warning(f"no entities selected")
+        return None, None
+
+    if not kdata_filters:
+        kdata_filters = []
+    kdata_filters = kdata_filters + [data_schema.entity_id.in_(filter_entities)]
 
     return get_top_entities(
         data_schema=data_schema,
@@ -92,7 +206,7 @@ def get_top_performance_entities(
         pct=pct,
         method=WindowMethod.change,
         return_type=return_type,
-        filters=filters,
+        kdata_filters=kdata_filters,
         show_name=show_name,
         data_provider=data_provider,
     )
@@ -128,7 +242,7 @@ def get_top_fund_holding_stocks(timestamp=None, pct=0.3, by=None):
         columns = ["entity_id", "market_cap"]
 
     entity_ids = fund_cap_df.index.tolist()
-    start_timestamp = next_date(timestamp, -30)
+    start_timestamp = date_time_by_interval(timestamp, -30)
     cap_df = StockValuation.query_data(
         entity_ids=entity_ids,
         filters=[
@@ -173,7 +287,7 @@ def get_performance(
         pct=1,
         method=WindowMethod.change,
         return_type=TopType.positive,
-        filters=[data_schema.entity_id.in_(entity_ids)],
+        kdata_filters=[data_schema.entity_id.in_(entity_ids)],
         data_provider=data_provider,
     )
     return result
@@ -250,15 +364,18 @@ def get_top_volume_entities(
     adjust_type: Union[AdjustType, str] = None,
     method=WindowMethod.avg,
     data_provider=None,
+    threshold=None,
 ):
     if not adjust_type:
         adjust_type = default_adjust_type(entity_type=entity_type)
 
     data_schema = get_kdata_schema(entity_type=entity_type, adjust_type=adjust_type)
 
-    filters = None
+    filters = []
     if entity_ids:
-        filters = [data_schema.entity_id.in_(entity_ids)]
+        filters.append(data_schema.entity_id.in_(entity_ids))
+    if threshold:
+        filters.append(data_schema.turnover >= threshold)
 
     result, _ = get_top_entities(
         data_schema=data_schema,
@@ -268,7 +385,44 @@ def get_top_volume_entities(
         pct=pct,
         method=method,
         return_type=return_type,
-        filters=filters,
+        kdata_filters=filters,
+        data_provider=data_provider,
+    )
+    return result
+
+
+def get_top_turnover_rate_entities(
+    entity_type="stock",
+    entity_ids=None,
+    start_timestamp=None,
+    end_timestamp=None,
+    pct=0.1,
+    return_type=TopType.positive,
+    adjust_type: Union[AdjustType, str] = None,
+    method=WindowMethod.avg,
+    data_provider=None,
+    threshold=None,
+):
+    if not adjust_type:
+        adjust_type = default_adjust_type(entity_type=entity_type)
+
+    data_schema = get_kdata_schema(entity_type=entity_type, adjust_type=adjust_type)
+
+    filters = []
+    if entity_ids:
+        filters.append(data_schema.entity_id.in_(entity_ids))
+    if threshold:
+        filters.append(data_schema.turnover_rate >= threshold)
+
+    result, _ = get_top_entities(
+        data_schema=data_schema,
+        start_timestamp=start_timestamp,
+        end_timestamp=end_timestamp,
+        column="turnover_rate",
+        pct=pct,
+        method=method,
+        return_type=return_type,
+        kdata_filters=filters,
         data_provider=data_provider,
     )
     return result
@@ -282,7 +436,7 @@ def get_top_entities(
     pct=0.1,
     method: WindowMethod = WindowMethod.change,
     return_type: TopType = None,
-    filters=None,
+    kdata_filters=None,
     show_name=False,
     data_provider=None,
 ):
@@ -296,7 +450,8 @@ def get_top_entities(
     :param pct: range (0,1]
     :param method:
     :param return_type:
-    :param filters:
+    :param entity_filters:
+    :param kdata_filters:
     :param show_name: show entity name
     :return:
     """
@@ -315,7 +470,7 @@ def get_top_entities(
         start_timestamp=start_timestamp,
         end_timestamp=end_timestamp,
         columns=columns,
-        filters=filters,
+        filters=kdata_filters,
         provider=data_provider,
     )
     if not pd_is_not_null(all_df):
@@ -328,7 +483,7 @@ def get_top_entities(
             start = df[column].iloc[0]
             end = df[column].iloc[-1]
             if start != 0:
-                change = (end - start) / start
+                change = (end - start) / abs(start)
             else:
                 change = 0
             tops[entity_id] = change
@@ -401,31 +556,46 @@ def show_industry_composition(entity_ids, timestamp):
     drawer.draw_pie(show=True)
 
 
+def get_change_ratio(
+    entity_type="stock",
+    start_timestamp=None,
+    end_timestamp=None,
+    adjust_type: Union[AdjustType, str] = None,
+    provider="em",
+):
+    def cal_ratio(df):
+        positive = df[df["direction"]]
+        other = df[~df["direction"]]
+        return len(positive) / len(other)
+
+    if not adjust_type:
+        adjust_type = default_adjust_type(entity_type=entity_type)
+    data_schema = get_kdata_schema(entity_type=entity_type, adjust_type=adjust_type)
+    kdata_df = data_schema.query_data(provider=provider, start_timestamp=start_timestamp, end_timestamp=end_timestamp)
+    kdata_df["direction"] = kdata_df["change_pct"] > 0
+    ratio_df = kdata_df.groupby("timestamp").apply(lambda df: cal_ratio(df))
+    return ratio_df
+
+
 if __name__ == "__main__":
-    df = get_performance_stats_by_month()
-    print(df)
-    # dfs = []
-    # for timestamp, df in got_top_performance_by_month(start_timestamp="2012-01-01", list_days=250):
-    #     if pd_is_not_null(df):
-    #         entity_ids = df.index.tolist()
-    #         the_date = pre_month_end_date(timestamp)
-    #         show_industry_composition(entity_ids=entity_ids, timestamp=timestamp)
-    # for entity_id in df.index:
-    #     from zvt.utils.time_utils import month_end_date, pre_month_start_date
-    #
-    #     end_date = month_end_date(pre_month_start_date(timestamp))
-    #     TechnicalFactor(entity_ids=[entity_id], end_timestamp=end_date).draw(show=True)
+    print(get_top_performance_entities_by_periods(entity_provider="em", data_provider="em"))
+
 
 # the __all__ is generated
 __all__ = [
     "WindowMethod",
     "TopType",
     "get_top_performance_by_month",
+    "get_top_performance_entities_by_periods",
     "get_top_performance_entities",
     "get_top_fund_holding_stocks",
     "get_performance",
+    "get_performance_stats_by_month",
+    "get_performance_stats",
     "get_top_volume_entities",
+    "get_top_turnover_rate_entities",
     "get_top_entities",
     "show_month_performance",
     "show_industry_composition",
+    "get_change_ratio",
 ]

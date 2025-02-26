@@ -13,11 +13,18 @@ from zvt.domain import (
     StockhkKdataCommon,
     StockusKdataCommon,
     BlockKdataCommon,
+    Indexus,
+    IndexusKdataCommon,
+    Future,
+    FutureKdataCommon,
+    Currency,
+    CurrencyKdataCommon,
 )
 from zvt.domain.meta.stockhk_meta import Stockhk
 from zvt.domain.meta.stockus_meta import Stockus
-from zvt.recorders.em.em_api import get_kdata
-from zvt.utils import pd_is_not_null
+from zvt.recorders.em import em_api
+from zvt.utils.pd_utils import pd_is_not_null
+from zvt.utils.time_utils import count_interval, now_pd_timestamp, current_date
 
 
 class BaseEMStockKdataRecorder(FixedCycleDataRecorder):
@@ -31,6 +38,7 @@ class BaseEMStockKdataRecorder(FixedCycleDataRecorder):
         force_update=True,
         sleeping_time=10,
         exchanges=None,
+        entity_id=None,
         entity_ids=None,
         code=None,
         codes=None,
@@ -45,6 +53,7 @@ class BaseEMStockKdataRecorder(FixedCycleDataRecorder):
         kdata_use_begin_time=False,
         one_day_trading_minutes=24 * 60,
         adjust_type=AdjustType.qfq,
+        return_unfinished=False,
     ) -> None:
         level = IntervalLevel(level)
         self.adjust_type = AdjustType(adjust_type)
@@ -56,6 +65,7 @@ class BaseEMStockKdataRecorder(FixedCycleDataRecorder):
             force_update,
             sleeping_time,
             exchanges,
+            entity_id,
             entity_ids,
             code,
             codes,
@@ -69,10 +79,13 @@ class BaseEMStockKdataRecorder(FixedCycleDataRecorder):
             level,
             kdata_use_begin_time,
             one_day_trading_minutes,
+            return_unfinished,
         )
 
     def record(self, entity, start, end, size, timestamps):
-        df = get_kdata(entity_id=entity.id, limit=size, adjust_type=self.adjust_type)
+        df = em_api.get_kdata(
+            session=self.http_session, entity_id=entity.id, limit=size, adjust_type=self.adjust_type, level=self.level
+        )
         if pd_is_not_null(df):
             df_to_db(df=df, data_schema=self.data_schema, provider=self.provider, force_update=self.force_update)
         else:
@@ -106,6 +119,27 @@ class EMStockKdataRecorder(BaseEMStockKdataRecorder):
     entity_schema = Stock
     data_schema = StockKdataCommon
 
+    def on_finish_entity(self, entity):
+        super().on_finish_entity(entity)
+        # fill holder
+        if not entity.holder_modified_date or (count_interval(entity.holder_modified_date, now_pd_timestamp()) > 30):
+            holder = em_api.get_controlling_shareholder(code=entity.code)
+            if holder:
+                entity.controlling_holder = holder.get("holder")
+                if holder.get("parent"):
+                    entity.controlling_holder_parent = holder.get("parent")
+                else:
+                    entity.controlling_holder_parent = holder.get("holder")
+                entity.holder_modified_date = current_date()
+                self.entity_session.add(entity)
+                self.entity_session.commit()
+            holder_stats = em_api.get_top_ten_free_holder_stats(code=entity.code)
+            if holder_stats:
+                entity.top_ten_ratio = holder_stats.get("ratio")
+                entity.holder_modified_date = current_date()
+                self.entity_session.add(entity)
+                self.entity_session.commit()
+
 
 class EMStockusKdataRecorder(BaseEMStockKdataRecorder):
     entity_provider = "em"
@@ -120,22 +154,49 @@ class EMStockhkKdataRecorder(BaseEMStockKdataRecorder):
 
 
 class EMIndexKdataRecorder(BaseEMStockKdataRecorder):
-    entity_provider = "exchange"
+    entity_provider = "em"
     entity_schema = Index
 
     data_schema = IndexKdataCommon
 
 
+class EMIndexusKdataRecorder(BaseEMStockKdataRecorder):
+    entity_provider = "em"
+    entity_schema = Indexus
+
+    data_schema = IndexusKdataCommon
+
+
 class EMBlockKdataRecorder(BaseEMStockKdataRecorder):
-    entity_provider = "eastmoney"
+    entity_provider = "em"
     entity_schema = Block
 
     data_schema = BlockKdataCommon
 
 
+class EMFutureKdataRecorder(BaseEMStockKdataRecorder):
+    entity_provider = "em"
+    entity_schema = Future
+
+    data_schema = FutureKdataCommon
+
+
+class EMCurrencyKdataRecorder(BaseEMStockKdataRecorder):
+    entity_provider = "em"
+    entity_schema = Currency
+
+    data_schema = CurrencyKdataCommon
+
+
 if __name__ == "__main__":
-    recorder = EMBlockKdataRecorder(level=IntervalLevel.LEVEL_1DAY, codes=["000300"])
+    df = Stock.query_data(filters=[Stock.exchange == "bj"], provider="em")
+    entity_ids = df["entity_id"].tolist()
+    recorder = EMStockKdataRecorder(
+        level=IntervalLevel.LEVEL_1DAY, entity_ids=entity_ids, sleeping_time=0, adjust_type=AdjustType.hfq
+    )
     recorder.run()
+
+
 # the __all__ is generated
 __all__ = [
     "BaseEMStockKdataRecorder",
@@ -143,5 +204,8 @@ __all__ = [
     "EMStockusKdataRecorder",
     "EMStockhkKdataRecorder",
     "EMIndexKdataRecorder",
+    "EMIndexusKdataRecorder",
     "EMBlockKdataRecorder",
+    "EMFutureKdataRecorder",
+    "EMCurrencyKdataRecorder",
 ]

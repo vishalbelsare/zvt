@@ -196,6 +196,11 @@ class IntersectTransformer(Transformer):
         self.kdata_overlap = kdata_overlap
 
     def transform(self, input_df) -> pd.DataFrame:
+        """
+
+        :param input_df:
+        :return:
+        """
         if self.kdata_overlap > 0:
             # 没有重叠，区间就是(0,0)
             input_df["overlap"] = [(0, 0)] * len(input_df.index)
@@ -229,7 +234,7 @@ class MaAndVolumeTransformer(Transformer):
 
     def transform(self, input_df) -> pd.DataFrame:
         for window in self.windows:
-            col = "ma{}".format(window)
+            col = f"ma{window}"
             self.indicators.append(col)
 
             ma_df = input_df["close"].groupby(level=0).rolling(window=window, min_periods=window).mean()
@@ -238,7 +243,6 @@ class MaAndVolumeTransformer(Transformer):
 
         for vol_window in self.vol_windows:
             col = "vol_ma{}".format(vol_window)
-            self.indicators.append(col)
 
             vol_ma_df = input_df["volume"].groupby(level=0).rolling(window=vol_window, min_periods=vol_window).mean()
             vol_ma_df = vol_ma_df.reset_index(level=0, drop=True)
@@ -287,7 +291,8 @@ class MacdTransformer(Transformer):
                 count_live_dead=self.count_live_dead,
             )
         )
-        input_df = pd.concat([input_df, macd_df], axis=1, sort=False)
+        macd_df = macd_df.reset_index(level=0, drop=True)
+        input_df = pd.concat([input_df, macd_df], axis=1, sort=False, verify_integrity=True)
         return input_df
 
     def transform_one(self, entity_id, df: pd.DataFrame) -> pd.DataFrame:

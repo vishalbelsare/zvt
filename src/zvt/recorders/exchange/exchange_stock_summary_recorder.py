@@ -26,7 +26,9 @@ class ExchangeStockSummaryRecorder(TimestampsDataRecorder):
         force_update=False,
         sleeping_time=5,
         exchanges=None,
+        entity_id=None,
         entity_ids=None,
+        code=None,
         day_data=False,
         entity_filters=None,
         ignore_failed=True,
@@ -39,7 +41,9 @@ class ExchangeStockSummaryRecorder(TimestampsDataRecorder):
             force_update,
             sleeping_time,
             exchanges,
+            entity_id,
             entity_ids,
+            code,
             ["000001"],
             day_data,
             entity_filters,
@@ -90,5 +94,7 @@ class ExchangeStockSummaryRecorder(TimestampsDataRecorder):
 
 if __name__ == "__main__":
     ExchangeStockSummaryRecorder().run()
+
+
 # the __all__ is generated
 __all__ = ["ExchangeStockSummaryRecorder"]

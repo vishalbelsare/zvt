@@ -5,9 +5,9 @@ from typing import List
 
 from zvt.autocode.templates import all_tpls
 from zvt.contract import IntervalLevel, AdjustType
-from zvt.utils import now_pd_timestamp
 from zvt.utils.file_utils import list_all_files
 from zvt.utils.git_utils import get_git_user_name, get_git_user_email
+from zvt.utils.time_utils import now_pd_timestamp
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +72,7 @@ def all_sub_all(sub_module):
 # import all from submodule {0}
 from .{0} import *
 from .{0} import __all__ as _{0}_all
+
 __all__ += _{0}_all""".format(
         sub_module
     )
@@ -94,40 +95,64 @@ def fill_package(dir_path: str):
             pkg_file = os.path.join(dir_path, "__init__.py")
             if not os.path.exists(pkg_file):
                 package_template = "# -*- coding: utf-8 -*-\n"
-                with open(pkg_file, "w") as outfile:
+                with open(pkg_file, "w", encoding="utf-8") as outfile:
                     outfile.write(package_template)
 
 
 def gen_exports(
     dir_path="./domain",
     gen_flag="# the __all__ is generated",
-    export_from_package=True,
+    export_from_package=False,
+    exclude_modules=None,
     export_modules=None,
-    exludes=None,
+    excludes=None,
+    export_var=False,
 ):
-    if not exludes:
-        exludes = ["logger"]
-    fill_package_if_not_exist(dir_path=dir_path)
-    files = list_all_files(dir_path=dir_path)
+    if not excludes:
+        excludes = ["logger"]
+    if os.path.isfile(dir_path):
+        files = [dir_path]
+    else:
+        fill_package_if_not_exist(dir_path=dir_path)
+        files = list_all_files(dir_path=dir_path)
     for file in files:
         exports = []
         lines = []
         # read and generate __all__
-        with open(file) as fp:
+        with open(file, encoding="utf-8") as fp:
             line = fp.readline()
             while line:
                 if line.startswith(gen_flag):
                     break
                 lines.append(line)
                 export = _get_interface_name(line)
-                if not export:
+                if export_var and not export:
                     export = _get_var_name(line)
-                if export and export[0].isalpha() and export not in exludes:
+                if export and export[0].isalpha() and export not in excludes:
                     exports.append(export)
                 line = fp.readline()
         print(f"{file}:{exports}")
+        end_empty_lines_count = 0
+        for i in range(-1, -len(lines) - 1, -1):
+            if not lines[i].isspace():
+                break
+            end_empty_lines_count = end_empty_lines_count + 1
+        lines = lines[: len(lines) - end_empty_lines_count]
+
+        if not lines:
+            lines.append("# -*- coding: utf-8 -*-#")
+
+        lines.append("\n\n")
         lines.append(gen_flag)
-        lines.append(f"\n__all__ = {exports}")
+        lines.append("\n")
+        exports_str = f"__all__ = {exports}"
+        exports_str = exports_str.replace("'", '"')
+        if len(exports_str) > 120:
+            exports_wrap = [f'\n    "{item}",' for item in exports]
+            exports_str = "__all__ = [" + "".join(exports_wrap) + "\n]"
+            exports_str = exports_str.replace("'", '"')
+        lines.append(exports_str)
+        lines.append("\n")
 
         # the package module
         if export_from_package:
@@ -136,20 +161,22 @@ def gen_exports(
                 dir_path = os.path.dirname(file)
                 modules = all_sub_modules(dir_path)
                 if modules:
+                    if exclude_modules:
+                        modules = set(modules) - set(exclude_modules)
                     if export_modules:
                         modules = set(modules) & set(export_modules)
                     lines.append(
                         """
-
 # __init__.py structure:
 # common code of the package
 # export interface in __all__ which contains __all__ of its sub modules"""
                     )
                     for mod in modules:
                         lines.append(all_sub_all(mod))
+                    lines.append("\n")
 
         # write with __all__
-        with open(file, mode="w") as fp:
+        with open(file, mode="w", encoding="utf-8") as fp:
             fp.writelines(lines)
 
 
@@ -182,8 +209,8 @@ def gen_kdata_schema(
         logger.info(f"create dir {base_path}")
         os.makedirs(base_path)
 
+    providers_str = f"{providers}".replace("'", '"')
     for level in levels:
-
         for adjust_type in adjust_types:
             level = IntervalLevel(level)
 
@@ -196,7 +223,6 @@ def gen_kdata_schema(
             if adjust_type and (adjust_type != AdjustType.qfq):
                 class_name = f"{cap_entity_type}{cap_level}{adjust_type.value.capitalize()}Kdata"
                 table_name = f"{entity_type}_{level.value}_{adjust_type.value.lower()}_kdata"
-
             else:
                 class_name = f"{cap_entity_type}{cap_level}Kdata"
                 table_name = f"{entity_type}_{level.value}_kdata"
@@ -214,14 +240,14 @@ KdataBase = declarative_base()
 
 
 class {class_name}(KdataBase, {kdata_common}):
-    __tablename__ = '{table_name}'
+    __tablename__ = "{table_name}"
 
 
-register_schema(providers={providers}, db_name='{table_name}', schema_base=KdataBase, entity_type='{entity_type}')
+register_schema(providers={providers_str}, db_name="{table_name}", schema_base=KdataBase, entity_type="{entity_type}")
 
 """
             # generate the schema
-            with open(os.path.join(base_path, f"{table_name}.py"), "w") as outfile:
+            with open(os.path.join(base_path, f"{table_name}.py"), "w", encoding="utf-8") as outfile:
                 outfile.write(schema_template)
 
         # generate the package
@@ -229,7 +255,7 @@ register_schema(providers={providers}, db_name='{table_name}', schema_base=Kdata
         if not os.path.exists(pkg_file):
             package_template = """# -*- coding: utf-8 -*-
 """
-            with open(pkg_file, "w") as outfile:
+            with open(pkg_file, "w", encoding="utf-8") as outfile:
                 outfile.write(package_template)
 
     # generate exports
